@@ -29,8 +29,11 @@ import os
 import cv2
 import numpy as np
 
-from utils.instance_class import *
-from utils.labels import *
+from utils.instance_class_synthia import *
+from utils.labels_synthia import *
+
+import imageio
+imageio.plugins.freeimage.download()
 
 
 def findContours(*args, **kwargs):
@@ -62,11 +65,18 @@ def instances2dict_with_polygons(imageFileList, verbose=False):
         print("Processing {} images...".format(len(imageFileList)))
 
     for imageFileName in imageFileList:
-        # Load image
-        img = Image.open(imageFileName)
+        # # Load image
+        # img = Image.open(imageFileName)
+        #
+        # # Image as numpy array
+        # imgNp = np.array(img)
+        # imgNp = imgNp[:, :] * 1000 + imgNp[1, :, :]
 
-        # Image as numpy array
-        imgNp = np.array(img)
+        # Load image
+        gt_image = imageio.imread(imageFileName, format='PNG-FI')
+        assert (gt_image < 1000).all(), "instance id can be larger than 1000 !"
+        instance_area = np.array(gt_image[:, :, 1] > 0, dtype=np.int32)
+        imgNp = (gt_image[:, :, 0] * 1000 + gt_image[:, :, 1]) * instance_area + gt_image[:, :, 0] * (1 - instance_area)
 
         # Initialize label categories
         instances = {}
@@ -120,35 +130,35 @@ def xyxy_to_xywh(xyxy_box):
     return xywh_box
 
 
-def convert_cityscapes_instance_only(data_dir, out_dir):
+def convert_synthia_instance_only(data_dir, out_dir):
     """Convert from cityscapes format to COCO instance seg format - polygons"""
     sets = [
-        'leftImg8bit/train',
-        'leftImg8bit/val'
+        'RGB',
     ]
 
     ann_dirs = [
-        'gtFine/train',
-        'gtFine/val',
+        'GT/LABELS',
     ]
 
     json_name = 'instancesonly_filtered_%s.json'
-    polygon_json_file_ending = '_polygons.json'
+    # polygon_json_file_ending = '_polygons.json'
     img_id = 0
     ann_id = 0
-    cat_id = 1
-    category_dict = {}
+    # cat_id = 1
 
     category_instancesonly = [
-        'person',
-        'rider',
-        'car',
-        'truck',
-        'bus',
-        'train',
-        'motorcycle',
-        'bicycle',
+        'person',      # 'Pedestrian'
+        'rider',       # 'Rider'
+        'car',         # 'Car'
+        'truck',       # 'Truck'
+        'bus',         # 'Bus'
+        'train',       # 'Train'
+        'motorcycle',  # 'Motorcycle'
+        'bicycle',     # 'Bicycle'
     ]
+
+    # same as cityscapes
+    category_dict = {cls: idx + 1 for idx, cls in enumerate(category_instancesonly)}
 
     for data_set, ann_dir in zip(sets, ann_dirs):
         print('Starting %s' % data_set)
@@ -158,60 +168,56 @@ def convert_cityscapes_instance_only(data_dir, out_dir):
 
         for root, _, files in os.walk(os.path.join(data_dir, ann_dir)):
             for filename in files:
-                if filename.endswith(polygon_json_file_ending):
+                # if filename.endswith(polygon_json_file_ending):
+                if len(images) % 50 == 0:
+                    print("Processed %s images, %s annotations" % (len(images), len(annotations)))
 
-                    if len(images) % 50 == 0:
-                        print("Processed %s images, %s annotations" % (len(images), len(annotations)))
+                # json_ann = json.load(open(os.path.join(root, filename)))
+                img = Image.open(filename)
 
-                    json_ann = json.load(open(os.path.join(root, filename)))
+                image = {}
+                image['id'] = img_id
+                img_id += 1
+                image['width'], image['height'] = img.size
+                image['file_name'] = os.path.join(filename.replace('GT/LABELS', 'RGB'))
+                image['seg_file_name'] = os.path.join(filename)
+                images.append(image)
 
-                    image = {}
-                    image['id'] = img_id
-                    img_id += 1
-                    image['width'] = json_ann['imgWidth']
-                    image['height'] = json_ann['imgHeight']
-                    image['file_name'] = os.path.join("leftImg8bit",
-                                                      data_set.split("/")[-1],
-                                                      filename.split('_')[0],
-                                                      filename.replace("_gtFine_polygons.json", '_leftImg8bit.png'))
-                    image['seg_file_name'] = filename.replace("_polygons.json", "_instanceIds.png")
-                    images.append(image)
+                fullname = os.path.join(root, image['seg_file_name'])
+                objects = instances2dict_with_polygons([fullname], verbose=False)[fullname]
 
-                    fullname = os.path.join(root, image['seg_file_name'])
-                    objects = instances2dict_with_polygons([fullname], verbose=False)[fullname]
+                for object_cls in objects:
+                    if object_cls not in category_instancesonly:
+                        continue  # skip non-instance categories
 
-                    for object_cls in objects:
-                        if object_cls not in category_instancesonly:
+                    for obj in objects[object_cls]:
+                        if obj['contours'] == []:
+                            print('Warning: empty contours.')
                             continue  # skip non-instance categories
 
-                        for obj in objects[object_cls]:
-                            if obj['contours'] == []:
-                                print('Warning: empty contours.')
-                                continue  # skip non-instance categories
+                        len_p = [len(p) for p in obj['contours']]
+                        if min(len_p) <= 4:
+                            print('Warning: invalid contours.')
+                            continue  # skip non-instance categories
 
-                            len_p = [len(p) for p in obj['contours']]
-                            if min(len_p) <= 4:
-                                print('Warning: invalid contours.')
-                                continue  # skip non-instance categories
+                        ann = {}
+                        ann['id'] = ann_id
+                        ann_id += 1
+                        ann['image_id'] = image['id']
+                        ann['segmentation'] = obj['contours']
 
-                            ann = {}
-                            ann['id'] = ann_id
-                            ann_id += 1
-                            ann['image_id'] = image['id']
-                            ann['segmentation'] = obj['contours']
+                        # if object_cls not in category_dict:
+                        #     category_dict[object_cls] = cat_id
+                        #     cat_id += 1
+                        ann['category_id'] = category_dict[object_cls]
+                        ann['iscrowd'] = 0
+                        ann['area'] = obj['pixelCount']
 
-                            if object_cls not in category_dict:
-                                category_dict[object_cls] = cat_id
-                                cat_id += 1
-                            ann['category_id'] = category_dict[object_cls]
-                            ann['iscrowd'] = 0
-                            ann['area'] = obj['pixelCount']
+                        xyxy_box = poly_to_box(ann['segmentation'])
+                        xywh_box = xyxy_to_xywh(xyxy_box)
+                        ann['bbox'] = xywh_box
 
-                            xyxy_box = poly_to_box(ann['segmentation'])
-                            xywh_box = xyxy_to_xywh(xyxy_box)
-                            ann['bbox'] = xywh_box
-
-                            annotations.append(ann)
+                        annotations.append(ann)
 
         ann_dict['images'] = images
         categories = [{"id": category_dict[name], "name": name} for name in category_dict]
@@ -228,9 +234,9 @@ def convert_cityscapes_instance_only(data_dir, out_dir):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Convert dataset')
-    parser.add_argument('--dataset', help="cityscapes", default='cityscapes', type=str)
-    parser.add_argument('--outdir', help="output dir for json files", default='data/cityscapes/annotations', type=str)
-    parser.add_argument('--datadir', help="data dir for annotations to be converted", default="data/cityscapes", type=str)
+    parser.add_argument('--dataset', help="synthia", default='synthia', type=str)
+    parser.add_argument('--outdir', help="output dir for json files", default='RAND_CITYSCAPES/annotations', type=str)
+    parser.add_argument('--datadir', help="data dir for annotations to be converted", default="RAND_CITYSCAPES", type=str)
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
@@ -239,7 +245,7 @@ def parse_args():
 
 if __name__ == '__main__':
     args = parse_args()
-    if args.dataset == "cityscapes":
-        convert_cityscapes_instance_only(args.datadir, args.outdir)
+    if args.dataset == "synthia":
+        convert_synthia_instance_only(args.datadir, args.outdir)
     else:
         print("Dataset not supported: %s" % args.dataset)
