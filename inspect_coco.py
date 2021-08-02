@@ -31,7 +31,7 @@ def main(coco_dir, num_plot_examples):
         image = dataset.load_image(random_image_id)
         mask, class_ids = dataset.load_mask(random_image_id)
         bbox = utils.utils.extract_bboxes(mask)
-        visualize.display_instances(image, bbox, mask, class_ids, dataset.class_names)
+        visualize.display_instances(image, bbox, mask, class_ids, dataset.class_names, save_path='./samples/{}.png'.format(_))
 
 
 def parse_args():
