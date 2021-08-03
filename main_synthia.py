@@ -70,13 +70,13 @@ def instances2dict_with_polygons(imageFileList, verbose=False):
         #
         # # Image as numpy array
         # imgNp = np.array(img)
-        # imgNp = imgNp[:, :] * 1000 + imgNp[1, :, :]
+        # imgNp = imgNp[:, :] * 10000 + imgNp[1, :, :]
 
         # Load image
         gt_image = imageio.imread(imageFileName, format='PNG-FI')
-        assert (gt_image < 1000).all(), "instance id can be larger than 1000 !"
-        instance_area = np.array(gt_image[:, :, 1] > 0, dtype=np.int32)
-        imgNp = (gt_image[:, :, 0] * 1000 + gt_image[:, :, 1]) * instance_area + gt_image[:, :, 0] * (1 - instance_area)
+        assert (gt_image < 10000).all(), "instance id can be larger than 10000 !"
+        instance_area = np.array(gt_image[:, :, 1] > 0, dtype=np.int64)
+        imgNp = (gt_image[:, :, 0] * 10000 + gt_image[:, :, 1]) * instance_area + gt_image[:, :, 0] * (1 - instance_area)
 
         # Initialize label categories
         instances = {}
@@ -85,7 +85,7 @@ def instances2dict_with_polygons(imageFileList, verbose=False):
 
         # Loop through all instance ids in instance image
         for instanceId in np.unique(imgNp):
-            if instanceId < 1000:  # stuff is not considered
+            if instanceId < 10000:  # stuff is not considered
                 continue
             instanceObj = Instance(imgNp, instanceId)
             instanceObj_dict = instanceObj.toDict()

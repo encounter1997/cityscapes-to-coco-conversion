@@ -17,11 +17,11 @@ class Instance(object):
         self.labelID    = int(self.getLabelID(instID))
         self.pixelCount = int(self.getInstancePixels(imgNp, instID))
 
-    def getLabelID(self, instID):  # cityscape encodes the thing by (instID + 1000 * categoryID)
-        if (instID < 1000):
+    def getLabelID(self, instID):  # cityscape encodes the thing by (instID + 10000 * categoryID)
+        if (instID < 10000):
             return instID
         else:
-            return int(instID / 1000)
+            return int(instID / 10000)
 
     def getInstancePixels(self, imgNp, instLabel):
         return (imgNp == instLabel).sum()
