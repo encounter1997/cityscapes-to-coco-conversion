@@ -173,17 +173,19 @@ def convert_synthia_instance_only(data_dir, out_dir):
                     print("Processed %s images, %s annotations" % (len(images), len(annotations)))
 
                 # json_ann = json.load(open(os.path.join(root, filename)))
-                img = Image.open(filename)
+
+                fullname = os.path.join(root, filename)  # fullname for seg_file
+
+                img = Image.open(fullname)
 
                 image = {}
                 image['id'] = img_id
                 img_id += 1
                 image['width'], image['height'] = img.size
-                image['file_name'] = os.path.join(filename.replace('GT/LABELS', 'RGB'))
-                image['seg_file_name'] = os.path.join(filename)
+                image['file_name'] = filename
+                image['seg_file_name'] = filename
                 images.append(image)
 
-                fullname = os.path.join(root, image['seg_file_name'])
                 objects = instances2dict_with_polygons([fullname], verbose=False)[fullname]
 
                 for object_cls in objects:
